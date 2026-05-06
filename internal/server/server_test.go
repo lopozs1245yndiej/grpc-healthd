@@ -90,3 +90,22 @@ func TestServer_CheckServingService(t *testing.T) {
 		t.Errorf("expected SERVING, got %v", resp.Status)
 	}
 }
+
+func TestServer_CheckNotServingService(t *testing.T) {
+	srv, checker, port := startServer(t)
+	defer srv.Stop()
+
+	checker.SetStatus("degraded-service", grpc_health_v1.HealthCheckResponse_NOT_SERVING)
+
+	conn := clientConn(t, port)
+	defer conn.Close()
+
+	client := grpc_health_v1.NewHealthClient(conn)
+	resp, err := client.Check(context.Background(), &grpc_health_v1.HealthCheckRequest{Service: "degraded-service"})
+	if err != nil {
+		t.Fatalf("Check failed: %v", err)
+	}
+	if resp.Status != grpc_health_v1.HealthCheckResponse_NOT_SERVING {
+		t.Errorf("expected NOT_SERVING, got %v", resp.Status)
+	}
+}
