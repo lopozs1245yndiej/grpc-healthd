@@ -62,6 +62,30 @@ func TestNewServer_Healthz(t *testing.T) {
 	}
 }
 
+func TestNewServer_MetricsRoute(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	m := metrics.New(reg)
+	m.RecordServing("svc-server", 0.010)
+
+	srv := metrics.NewServer("127.0.0.1:0", reg)
+	ts := httptest.NewServer(srv.Handler)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("GET /metrics: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "grpc_healthd_service_status") {
+		t.Error("response does not contain grpc_healthd_service_status")
+	}
+}
+
 func TestHandler_NilRegistry(t *testing.T) {
 	h := metrics.Handler(nil)
 	if h == nil {
