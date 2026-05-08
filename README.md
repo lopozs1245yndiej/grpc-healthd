@@ -46,6 +46,7 @@ services:
 | `--target`  | `localhost:80`| Target gRPC service address        |
 | `--service` | `""`          | Service name to check              |
 | `--interval`| `10s`         | Health check poll interval         |
+| `--timeout` | `5s`          | Timeout for each health check RPC  |
 
 ## Configuration
 
