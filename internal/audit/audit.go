@@ -67,3 +67,17 @@ func (l *Log) Len() int {
 	defer l.mu.Unlock()
 	return len(l.entries)
 }
+
+// Since returns a snapshot of all entries recorded at or after the given time.
+func (l *Log) Since(t time.Time) []Entry {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	var result []Entry
+	for _, e := range l.entries {
+		if !e.Timestamp.Before(t) {
+			result = append(result, e)
+		}
+	}
+	return result
+}
