@@ -1,4 +1,3 @@
-// Package healthhistory tracks status transition events for monitored services.
 package healthhistory
 
 import (
@@ -8,14 +7,15 @@ import (
 	grpc_health_v1 "google.golang.org/grpc/health/grpc_health_v1"
 )
 
-// Event records a single status transition for a service.
+// Event records a single health-status transition.
 type Event struct {
 	Service   string                          `json:"service"`
 	Status    grpc_health_v1.HealthCheckResponse_ServingStatus `json:"status"`
+	StatusStr string                          `json:"status_text"`
 	Timestamp time.Time                       `json:"timestamp"`
 }
 
-// History maintains a bounded ring-buffer of status transition events.
+// History is a bounded, thread-safe ring buffer of health events.
 type History struct {
 	mu      sync.Mutex
 	events  []Event
@@ -23,56 +23,41 @@ type History struct {
 }
 
 // New returns a History that retains at most maxSize events.
-// If maxSize is less than 1 it defaults to 100.
+// If maxSize is <= 0 it defaults to 200.
 func New(maxSize int) *History {
-	if maxSize < 1 {
-		maxSize = 100
+	if maxSize <= 0 {
+		maxSize = 200
 	}
-	return &History{
-		events:  make([]Event, 0, maxSize),
-		maxSize: maxSize,
-	}
+	return &History{maxSize: maxSize}
 }
 
-// Record appends a new status-transition event. The oldest event is evicted
-// once the buffer is full.
+// Record appends a new event, evicting the oldest when the buffer is full.
 func (h *History) Record(service string, status grpc_health_v1.HealthCheckResponse_ServingStatus) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	ev := Event{
+	e := Event{
 		Service:   service,
 		Status:    status,
+		StatusStr: status.String(),
 		Timestamp: time.Now().UTC(),
 	}
 
 	if len(h.events) >= h.maxSize {
-		// Evict oldest by shifting left.
-		copy(h.events, h.events[1:])
-		h.events[len(h.events)-1] = ev
-		return
+		h.events = h.events[1:]
 	}
-	h.events = append(h.events, ev)
+	h.events = append(h.events, e)
 }
 
-// Entries returns a shallow copy of all recorded events in insertion order.
-func (h *History) Entries() []Event {
+// Events returns a copy of all recorded events, optionally filtered by
+// service name (empty string means "all services").
+func (h *History) Events(service string) []Event {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	out := make([]Event, len(h.events))
-	copy(out, h.events)
-	return out
-}
-
-// EntriesFor returns events recorded for the given service name.
-func (h *History) EntriesFor(service string) []Event {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-
-	var out []Event
+	out := make([]Event, 0, len(h.events))
 	for _, e := range h.events {
-		if e.Service == service {
+		if service == "" || e.Service == service {
 			out = append(out, e)
 		}
 	}
