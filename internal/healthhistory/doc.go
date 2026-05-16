@@ -1,6 +1,6 @@
-// Package healthhistory records a rolling window of health state
-// transitions for each watched service.
+// Package healthhistory provides a bounded in-memory ring-buffer that records
+// health status transition events for monitored services.
 //
-// Events are stored in memory up to a configurable maximum. The Handler
-// exposes them over HTTP as JSON, with optional filtering by service name.
+// Events can be retrieved in full or filtered by service name via the HTTP
+// handler exposed by Handler.
 package healthhistory
