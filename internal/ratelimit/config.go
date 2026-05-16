@@ -4,48 +4,37 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"time"
 )
 
-// Config holds rate-limiter configuration sourced from environment variables.
+// Config holds the token-bucket rate-limit parameters.
 type Config struct {
-	// Rate is the number of tokens added per Interval (default: 10).
-	Rate int
-	// Interval is the token refill period (default: 1s).
-	Interval time.Duration
-	// Capacity is the maximum burst size (default: 20).
+	// Capacity is the maximum number of tokens in the bucket.
 	Capacity int
+	// RatePerSec is the number of tokens added per second.
+	RatePerSec float64
+	// Enabled controls whether rate limiting is active.
+	Enabled bool
 }
 
-// DefaultConfig returns a Config with sensible defaults.
+// DefaultConfig returns a Config with sensible production defaults.
 func DefaultConfig() Config {
 	return Config{
-		Rate:     10,
-		Interval: time.Second,
-		Capacity: 20,
+		Capacity:   100,
+		RatePerSec: 10.0,
+		Enabled:    true,
 	}
 }
 
-// LoadFromEnv reads RATELIMIT_RATE, RATELIMIT_INTERVAL_MS, and
-// RATELIMIT_CAPACITY from the environment, falling back to defaults.
+// LoadFromEnv reads rate-limit configuration from environment variables,
+// falling back to DefaultConfig values when variables are absent.
+//
+// Environment variables:
+//
+//	RATELIMIT_CAPACITY    – integer token-bucket capacity (default 100)
+//	RATELIMIT_RATE_PER_SEC – float tokens added per second (default 10.0)
+//	RATELIMIT_ENABLED     – "true"/"false" (default true)
 func LoadFromEnv() (Config, error) {
 	cfg := DefaultConfig()
-
-	if v := os.Getenv("RATELIMIT_RATE"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n <= 0 {
-			return cfg, fmt.Errorf("ratelimit: invalid RATELIMIT_RATE %q: must be a positive integer", v)
-		}
-		cfg.Rate = n
-	}
-
-	if v := os.Getenv("RATELIMIT_INTERVAL_MS"); v != "" {
-		ms, err := strconv.Atoi(v)
-		if err != nil || ms <= 0 {
-			return cfg, fmt.Errorf("ratelimit: invalid RATELIMIT_INTERVAL_MS %q: must be a positive integer", v)
-		}
-		cfg.Interval = time.Duration(ms) * time.Millisecond
-	}
 
 	if v := os.Getenv("RATELIMIT_CAPACITY"); v != "" {
 		n, err := strconv.Atoi(v)
@@ -55,10 +44,31 @@ func LoadFromEnv() (Config, error) {
 		cfg.Capacity = n
 	}
 
+	if v := os.Getenv("RATELIMIT_RATE_PER_SEC"); v != "" {
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil || f <= 0 {
+			return cfg, fmt.Errorf("ratelimit: invalid RATELIMIT_RATE_PER_SEC %q: must be a positive number", v)
+		}
+		cfg.RatePerSec = f
+	}
+
+	if v := os.Getenv("RATELIMIT_ENABLED"); v != "" {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			return cfg, fmt.Errorf("ratelimit: invalid RATELIMIT_ENABLED %q: must be true or false", v)
+		}
+		cfg.Enabled = b
+	}
+
 	return cfg, nil
 }
 
-// NewFromConfig constructs a Limiter from the given Config.
+// NewFromConfig constructs a Limiter from the provided Config.
+// If cfg.Enabled is false a no-op limiter is returned.
 func NewFromConfig(cfg Config) *Limiter {
-	return New(cfg.Rate, cfg.Interval, cfg.Capacity)
+	if !cfg.Enabled {
+		// Return a limiter with effectively unlimited capacity.
+		return New(1<<31-1, float64(1<<31-1))
+	}
+	return New(cfg.Capacity, cfg.RatePerSec)
 }
