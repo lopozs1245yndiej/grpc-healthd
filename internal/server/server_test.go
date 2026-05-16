@@ -55,6 +55,17 @@ func clientConn(t *testing.T, port int) *grpc.ClientConn {
 	return conn
 }
 
+// checkStatus is a helper that performs a single health Check RPC and returns
+// the response status, fatally failing the test on any transport error.
+func checkStatus(t *testing.T, client grpc_health_v1.HealthClient, service string) grpc_health_v1.HealthCheckResponse_ServingStatus {
+	t.Helper()
+	resp, err := client.Check(context.Background(), &grpc_health_v1.HealthCheckRequest{Service: service})
+	if err != nil {
+		t.Fatalf("Check(%q) failed: %v", service, err)
+	}
+	return resp.Status
+}
+
 func TestServer_CheckUnknownService(t *testing.T) {
 	srv, _, port := startServer(t)
 	defer srv.Stop()
@@ -63,12 +74,8 @@ func TestServer_CheckUnknownService(t *testing.T) {
 	defer conn.Close()
 
 	client := grpc_health_v1.NewHealthClient(conn)
-	resp, err := client.Check(context.Background(), &grpc_health_v1.HealthCheckRequest{Service: "unknown"})
-	if err != nil {
-		t.Fatalf("Check failed: %v", err)
-	}
-	if resp.Status != grpc_health_v1.HealthCheckResponse_UNKNOWN {
-		t.Errorf("expected UNKNOWN, got %v", resp.Status)
+	if status := checkStatus(t, client, "unknown"); status != grpc_health_v1.HealthCheckResponse_UNKNOWN {
+		t.Errorf("expected UNKNOWN, got %v", status)
 	}
 }
 
@@ -82,12 +89,8 @@ func TestServer_CheckServingService(t *testing.T) {
 	defer conn.Close()
 
 	client := grpc_health_v1.NewHealthClient(conn)
-	resp, err := client.Check(context.Background(), &grpc_health_v1.HealthCheckRequest{Service: "my-service"})
-	if err != nil {
-		t.Fatalf("Check failed: %v", err)
-	}
-	if resp.Status != grpc_health_v1.HealthCheckResponse_SERVING {
-		t.Errorf("expected SERVING, got %v", resp.Status)
+	if status := checkStatus(t, client, "my-service"); status != grpc_health_v1.HealthCheckResponse_SERVING {
+		t.Errorf("expected SERVING, got %v", status)
 	}
 }
 
@@ -101,11 +104,7 @@ func TestServer_CheckNotServingService(t *testing.T) {
 	defer conn.Close()
 
 	client := grpc_health_v1.NewHealthClient(conn)
-	resp, err := client.Check(context.Background(), &grpc_health_v1.HealthCheckRequest{Service: "degraded-service"})
-	if err != nil {
-		t.Fatalf("Check failed: %v", err)
-	}
-	if resp.Status != grpc_health_v1.HealthCheckResponse_NOT_SERVING {
-		t.Errorf("expected NOT_SERVING, got %v", resp.Status)
+	if status := checkStatus(t, client, "degraded-service"); status != grpc_health_v1.HealthCheckResponse_NOT_SERVING {
+		t.Errorf("expected NOT_SERVING, got %v", status)
 	}
 }
