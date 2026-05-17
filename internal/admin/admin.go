@@ -44,7 +44,9 @@ func (h *Handler) ListServices(w http.ResponseWriter, r *http.Request) {
 		entries = append(entries, serviceEntry{Service: svc, Status: st.String()})
 	}
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(entries)
+	if err := json.NewEncoder(w).Encode(entries); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+	}
 }
 
 // setRequest is the expected JSON body for SetStatus.
@@ -62,6 +64,10 @@ func (h *Handler) SetStatus(w http.ResponseWriter, r *http.Request) {
 	var req setRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	if req.Service == "" {
+		http.Error(w, "service name must not be empty", http.StatusBadRequest)
 		return
 	}
 	st, ok := health.ParseStatus(req.Status)
